@@ -14,6 +14,10 @@ on:
         description: '锚定到某个UTC整点再发（可选，如 15）。留空=立即发送'
         required: false
         default: ''
+      fake_today:
+        description: '调试：模拟今天为指定日期（如 2026-11-16）。留空=真实日期'
+        required: false
+        default: ''
 
 jobs:
   check:
@@ -33,4 +37,5 @@ jobs:
           FEISHU_NOTIFY_TYPE: ${{ secrets.FEISHU_NOTIFY_TYPE }}
           FEISHU_NOTIFY_ID: ${{ secrets.FEISHU_NOTIFY_ID }}
           WAIT_UNTIL_UTC_HOUR: ${{ github.event_name == 'schedule' && github.event.schedule == '45 14 * * *' && '15' || github.event.inputs.wait_until_utc_hour }}
+          FAKE_TODAY: ${{ github.event.inputs.fake_today }}
         run: node scripts/check_schedule.mjs
