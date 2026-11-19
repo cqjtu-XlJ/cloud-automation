@@ -69,9 +69,10 @@ function buildConfirmedCard(name, timeStr, operatorId) {
     header: { template: 'green', title: { tag: 'plain_text', content: `✅ 已关门（${name} ${timeStr}）` } },
     elements: [
       { tag: 'div', text: { tag: 'lark_md', content: '一教大数据中心关门确认完成，今晚提醒到此为止，晚安 🌙' } },
-      { tag: 'note', elements: [{ tag: 'plain_text', content: '此确认由云端系统实时记录' }] },
+      { tag: 'note', elements: [{ tag: 'plain_text', content: `确认人：${name} · 确认时间：${timeStr} · 云端实时记录` }] },
     ],
   };
+  if (operatorId) card.open_ids = [operatorId]; // 旧接口必须：card 内加 open_ids 防报错 300090
   return card;
 }
 
@@ -96,27 +97,29 @@ function buildConfirmedCard(name, timeStr, operatorId) {
 
     let confirmed = false;
 
-    // 更新卡片为已确认（PATCH im/v1/messages 接口，已验证 code=0）
-    async function markConfirmed(operatorId, timeStr, name) {
-      try {
-        const upd = await client.request({
-          method: 'PATCH',
-          url: `/open-apis/im/v1/messages/${messageId}`,
-          data: { content: JSON.stringify(buildConfirmedCard(name, timeStr, operatorId)) },
-        });
-        if (upd.code === 0) {
-          log('卡片已更新为已确认');
-        } else {
-          log(`卡片更新接口返回 code=${upd.code} msg=${upd.msg}`);
-        }
-      } catch (e) {
-        log('卡片更新失败（不影响确认记录）:', e.message);
+    // 更新卡片为已确认：必须带点击事件里的 token（无 token 旧接口报 300020，已实测）
+    // 更新失败时才降级发文本，正常情况确认信息只体现在卡片上
+    async function markConfirmed(operatorId, timeStr, name, token) {
+      let updated = false;
+      if (token) {
+        try {
+          const upd = await client.request({
+            method: 'POST',
+            url: '/open-apis/interactive/v1/card/update',
+            data: { token, message_id: messageId, card: buildConfirmedCard(name, timeStr, operatorId) },
+          });
+          if (upd.code === 0) { updated = true; log('卡片已更新为已确认'); }
+          else log(`卡片更新返回 code=${upd.code} msg=${upd.msg}`);
+        } catch (e) { log('卡片更新异常:', e.message); }
+      } else {
+        log('点击事件中无 token，无法更新卡片');
       }
-      await client.im.message.create({
-        params: { receive_id_type: 'chat_id' },
-        data: { receive_id: CHAT_ID, msg_type: 'text', content: JSON.stringify({ text: `🌙 关门确认完成：${name} 于 ${timeStr} 确认，今晚检查结束，大家晚安！` }) },
-      });
-      log('群文本已发送');
+      if (!updated) {
+        await client.im.message.create({
+          params: { receive_id_type: 'chat_id' },
+          data: { receive_id: CHAT_ID, msg_type: 'text', content: JSON.stringify({ text: `🌙 关门确认完成：${name} 于 ${timeStr} 确认（卡片更新失败，此为降级通知），今晚检查结束，大家晚安！` }) },
+        }).catch(e => log('降级文本发送失败:', e.message));
+      }
     }
 
     // 长连接监听卡片点击
@@ -128,7 +131,8 @@ function buildConfirmedCard(name, timeStr, operatorId) {
             const ev = data.event || data;
             const value = ev.action?.value || {};
             const operatorId = ev.operator?.open_id || ev.operator?.operator_open_id || ev.operator_id || null;
-            log('收到卡片点击 value=', JSON.stringify(value), 'operator=', operatorId);
+            const token = ev.token || ev.action?.token || null;
+            log('收到卡片点击 value=', JSON.stringify(value), 'operator=', operatorId, 'token=', token ? '有' : '无');
             if (value.action === 'confirm_close' && operatorId && !confirmed) {
               confirmed = true;
               const timeStr = bjTime();
@@ -137,7 +141,7 @@ function buildConfirmedCard(name, timeStr, operatorId) {
                 const u = await client.request({ method: 'GET', url: `/open-apis/contact/v3/users/${operatorId}?user_id_type=open_id` });
                 if (u.data?.user?.name) name = u.data.user.name;
               } catch { /* 兜底 open_id */ }
-              await markConfirmed(operatorId, timeStr, name);
+              await markConfirmed(operatorId, timeStr, name, token);
             }
           } catch (e) { log('处理点击事件出错:', e.message); }
         },
