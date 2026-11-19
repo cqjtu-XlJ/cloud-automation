@@ -146,8 +146,9 @@ function buildConfirmedCard(name, timeStr, operatorId) {
     await wsReady;
     log('长连接已建立，开始监听按钮点击');
 
-    // 重发循环
+    // 重发循环（每10秒小步检查确认状态；累计满3分钟且未确认才重发）
     let round = 0;
+    let elapsed = 0;
     while (!confirmed) {
       // 截止检查：UTC 18:00（北京 02:00）
       const nowU = new Date().getUTCHours() + new Date().getUTCMinutes() / 60;
@@ -159,8 +160,11 @@ function buildConfirmedCard(name, timeStr, operatorId) {
         });
         return;
       }
-      await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+      await new Promise(r => setTimeout(r, 10 * 1000));
       if (confirmed) break;
+      elapsed += 10;
+      if (elapsed < POLL_INTERVAL_MS / 1000) continue;
+      elapsed = 0;
       round++;
       log(`round ${round}: 未确认，重发卡片`);
       const r = await client.im.message.create({
