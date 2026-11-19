@@ -1,0 +1,35 @@
+name: close-check
+
+on:
+  schedule:
+    # 北京时间 23:00 = UTC 15:00；提前15分钟触发，脚本内锚定准点
+    - cron: '45 14 * * *'
+  workflow_dispatch:
+    inputs:
+      wait_until_utc_hour:
+        description: '锚定到某个UTC整点再发（可选，如 15）。留空=立即发送'
+        required: false
+        default: ''
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    timeout-minutes: 220
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Run close check (websocket long connection)
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_CHAT_ID: ${{ secrets.FEISHU_CHAT_ID }}
+          WAIT_UNTIL_UTC_HOUR: ${{ github.event_name == 'schedule' && '15' || github.event.inputs.wait_until_utc_hour }}
+        run: node scripts/close_check.mjs

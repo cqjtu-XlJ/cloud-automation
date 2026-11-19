@@ -6,5 +6,8 @@
   "type": "module",
   "scripts": {
     "check": "node scripts/check_schedule.mjs"
+  },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.76.0"
   }
 }

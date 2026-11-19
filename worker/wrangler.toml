@@ -1,0 +1,11 @@
+name = "datapro-center-close"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "cda1012787ef4f6897fcc12c57a6e5df"
+
+[vars]
+# FEISHU_APP_ID / FEISHU_APP_SECRET / STATUS_TOKEN 用 secret 方式存储：
+# wrangler secret put FEISHU_APP_ID 等
