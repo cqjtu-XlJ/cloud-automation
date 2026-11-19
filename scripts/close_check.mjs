@@ -122,29 +122,37 @@ function buildConfirmedCard(name, timeStr) {
 
     // 长连接监听卡片点击
     const ws = new lark.WSClient({ appId: APP_ID, appSecret: APP_SECRET, domain: lark.Domain.Feishu, loggerLevel: 'warn' });
+
+    // 后台处理确认（姓名查询+卡片更新），避免阻塞回调应答导致客户端报「超时」
+    async function handleConfirm(operatorId, token) {
+      confirmed = true;
+      const timeStr = bjTime();
+      let name = '群成员';
+      try {
+        const u = await client.request({ method: 'GET', url: `/open-apis/contact/v3/users/${operatorId}?user_id_type=open_id` });
+        const nm = u.data?.user?.name;
+        log('姓名查询结果:', u.code, nm);
+        if (u.code === 0 && nm) name = nm;
+      } catch (e) { log('姓名查询异常:', e.message); }
+      await markConfirmed(operatorId, timeStr, name, token);
+    }
+
     const wsReady = ws.start({
       eventDispatcher: new lark.EventDispatcher({}).register({
-        'card.action.trigger': async (data) => {
-          try {
-            const ev = data.event || data;
-            const value = ev.action?.value || {};
-            const operatorId = ev.operator?.open_id || ev.operator?.operator_open_id || ev.operator_id || null;
-            const token = ev.token || ev.action?.token || null;
-            log('收到卡片点击 value=', JSON.stringify(value), 'operator=', operatorId, 'token=', token ? '有' : '无');
-            if (value.action === 'confirm_close' && operatorId && !confirmed) {
-              confirmed = true;
-              const timeStr = bjTime();
-              let name = '群成员';
-              try {
-                const u = await client.request({ method: 'GET', url: `/open-apis/contact/v3/users/${operatorId}?user_id_type=open_id` });
-                const nm = u.data?.user?.name;
-                log('姓名查询结果:', u.code, nm);
-                if (u.code === 0 && nm) name = nm;
-              } catch (e) { log('姓名查询异常:', e.message); }
-              await markConfirmed(operatorId, timeStr, name, token);
-            }
-          } catch (e) { log('处理点击事件出错:', e.message); }
-          // 必须给飞书应答，否则客户端弹「错误码 -10000」
+        'card.action.trigger': (data) => {
+          // 立即同步应答（飞书回调窗口很短），业务逻辑放后台
+          Promise.resolve().then(async () => {
+            try {
+              const ev = data.event || data;
+              const value = ev.action?.value || {};
+              const operatorId = ev.operator?.open_id || ev.operator?.operator_open_id || ev.operator_id || null;
+              const token = ev.token || ev.action?.token || null;
+              log('收到卡片点击 value=', JSON.stringify(value), 'operator=', operatorId, 'token=', token ? '有' : '无');
+              if (value.action === 'confirm_close' && operatorId && !confirmed) {
+                await handleConfirm(operatorId, token);
+              }
+            } catch (e) { log('处理点击事件出错:', e.message); }
+          });
           return { return_code: 0, return_message: 'success' };
         },
       }),
@@ -180,7 +188,8 @@ function buildConfirmedCard(name, timeStr) {
       if (r.code !== 0) log(`重发失败 code=${r.code} msg=${r.msg}`);
     }
 
-    log('已确认，任务结束');
+    log('已确认，保持在线 5 分钟后退出（让后续误点/重复点击也能正常回调）');
+    await new Promise(r => setTimeout(r, 5 * 60 * 1000));
     process.exit(0);
   } catch (e) {
     log('ERROR:', e.message);
