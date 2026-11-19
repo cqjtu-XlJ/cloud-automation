@@ -63,8 +63,8 @@ function buildCard() {
   };
 }
 
-function buildConfirmedCard(name, timeStr) {
-  return {
+function buildConfirmedCard(name, timeStr, operatorId) {
+  const card = {
     config: { wide_screen_mode: true },
     header: { template: 'green', title: { tag: 'plain_text', content: `✅ 已关门（${name} ${timeStr}）` } },
     elements: [
@@ -72,6 +72,9 @@ function buildConfirmedCard(name, timeStr) {
       { tag: 'note', elements: [{ tag: 'plain_text', content: '云端实时记录 · 未确认前每3分钟重发的提醒已停止' }] },
     ],
   };
+  // 旧接口必须有 open_ids，否则报 300090 "openid empty err"（实测）
+  if (operatorId) card.open_ids = [operatorId];
+  return card;
 }
 
 // ============ 主流程 ============
@@ -104,7 +107,7 @@ function buildConfirmedCard(name, timeStr) {
           const upd = await client.request({
             method: 'POST',
             url: '/open-apis/interactive/v1/card/update',
-            data: { token, message_id: messageId, card: buildConfirmedCard(name, timeStr) },
+            data: { token, message_id: messageId, card: buildConfirmedCard(name, timeStr, operatorId) },
           });
           if (upd.code === 0) { updated = true; log('卡片已更新为已确认'); }
           else log(`卡片更新返回 code=${upd.code} msg=${upd.msg}`);
