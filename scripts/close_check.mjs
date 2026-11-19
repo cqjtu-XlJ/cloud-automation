@@ -72,7 +72,6 @@ function buildConfirmedCard(name, timeStr, operatorId) {
       { tag: 'note', elements: [{ tag: 'plain_text', content: '此确认由云端系统实时记录' }] },
     ],
   };
-  if (operatorId) card.open_ids = [operatorId]; // 防更新接口报 300090（本机已验证）
   return card;
 }
 
@@ -97,18 +96,19 @@ function buildConfirmedCard(name, timeStr, operatorId) {
 
     let confirmed = false;
 
-    // 更新卡片为已确认
+    // 更新卡片为已确认（PATCH im/v1/messages 接口，已验证 code=0）
     async function markConfirmed(operatorId, timeStr, name) {
       try {
-        await client.request({
-          method: 'POST',
-          url: '/open-apis/interactive/v1/card/update',
-          data: {
-            message_id: messageId,
-            card: buildConfirmedCard(name, timeStr, operatorId),
-          },
+        const upd = await client.request({
+          method: 'PATCH',
+          url: `/open-apis/im/v1/messages/${messageId}`,
+          data: { content: JSON.stringify(buildConfirmedCard(name, timeStr, operatorId)) },
         });
-        log('卡片已更新为已确认');
+        if (upd.code === 0) {
+          log('卡片已更新为已确认');
+        } else {
+          log(`卡片更新接口返回 code=${upd.code} msg=${upd.msg}`);
+        }
       } catch (e) {
         log('卡片更新失败（不影响确认记录）:', e.message);
       }
