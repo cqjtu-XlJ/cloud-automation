@@ -63,17 +63,15 @@ function buildCard() {
   };
 }
 
-function buildConfirmedCard(name, timeStr, operatorId) {
-  const card = {
+function buildConfirmedCard(name, timeStr) {
+  return {
     config: { wide_screen_mode: true },
     header: { template: 'green', title: { tag: 'plain_text', content: `✅ 已关门（${name} ${timeStr}）` } },
     elements: [
-      { tag: 'div', text: { tag: 'lark_md', content: '一教大数据中心关门确认完成，今晚提醒到此为止，晚安 🌙' } },
-      { tag: 'note', elements: [{ tag: 'plain_text', content: `确认人：${name} · 确认时间：${timeStr} · 云端实时记录` }] },
+      { tag: 'div', text: { tag: 'lark_md', content: `**确认人：${name}**\n**确认时间：${timeStr}**\n一教大数据中心关门确认完成，今晚提醒到此为止，晚安 🌙` } },
+      { tag: 'note', elements: [{ tag: 'plain_text', content: '云端实时记录 · 未确认前每3分钟重发的提醒已停止' }] },
     ],
   };
-  if (operatorId) card.open_ids = [operatorId]; // 旧接口必须：card 内加 open_ids 防报错 300090
-  return card;
 }
 
 // ============ 主流程 ============
@@ -106,7 +104,7 @@ function buildConfirmedCard(name, timeStr, operatorId) {
           const upd = await client.request({
             method: 'POST',
             url: '/open-apis/interactive/v1/card/update',
-            data: { token, message_id: messageId, card: buildConfirmedCard(name, timeStr, operatorId) },
+            data: { token, message_id: messageId, card: buildConfirmedCard(name, timeStr) },
           });
           if (upd.code === 0) { updated = true; log('卡片已更新为已确认'); }
           else log(`卡片更新返回 code=${upd.code} msg=${upd.msg}`);
@@ -136,14 +134,18 @@ function buildConfirmedCard(name, timeStr, operatorId) {
             if (value.action === 'confirm_close' && operatorId && !confirmed) {
               confirmed = true;
               const timeStr = bjTime();
-              let name = operatorId;
+              let name = '群成员';
               try {
                 const u = await client.request({ method: 'GET', url: `/open-apis/contact/v3/users/${operatorId}?user_id_type=open_id` });
-                if (u.data?.user?.name) name = u.data.user.name;
-              } catch { /* 兜底 open_id */ }
+                const nm = u.data?.user?.name;
+                log('姓名查询结果:', u.code, nm);
+                if (u.code === 0 && nm) name = nm;
+              } catch (e) { log('姓名查询异常:', e.message); }
               await markConfirmed(operatorId, timeStr, name, token);
             }
           } catch (e) { log('处理点击事件出错:', e.message); }
+          // 必须给飞书应答，否则客户端弹「错误码 -10000」
+          return { return_code: 0, return_message: 'success' };
         },
       }),
     });
