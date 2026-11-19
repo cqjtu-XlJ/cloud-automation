@@ -1,0 +1,10 @@
+{
+  "name": "cloud-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "一教大数据中心提醒系统：会议排期检查 + 关门确认卡片",
+  "type": "module",
+  "scripts": {
+    "check": "node scripts/check_schedule.mjs"
+  }
+}

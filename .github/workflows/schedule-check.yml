@@ -1,0 +1,36 @@
+name: schedule-check
+
+on:
+  schedule:
+    # 北京时间 07:00 = UTC 23:00（前一日）
+    - cron: '0 23 * * *'
+    # 北京时间 12:00 = UTC 04:00
+    - cron: '0 4 * * *'
+    # 北京时间 23:00 = UTC 15:00；提前15分钟触发，脚本内锚定准点
+    - cron: '45 14 * * *'
+  workflow_dispatch:
+    inputs:
+      wait_until_utc_hour:
+        description: '锚定到某个UTC整点再发（可选，如 15）。留空=立即发送'
+        required: false
+        default: ''
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run schedule check
+        env:
+          FEISHU_APP_ID: ${{ secrets.FEISHU_APP_ID }}
+          FEISHU_APP_SECRET: ${{ secrets.FEISHU_APP_SECRET }}
+          FEISHU_NOTIFY_TYPE: ${{ secrets.FEISHU_NOTIFY_TYPE }}
+          FEISHU_NOTIFY_ID: ${{ secrets.FEISHU_NOTIFY_ID }}
+          WAIT_UNTIL_UTC_HOUR: ${{ github.event_name == 'schedule' && github.event.schedule == '45 14 * * *' && '15' || github.event.inputs.wait_until_utc_hour }}
+        run: node scripts/check_schedule.mjs
